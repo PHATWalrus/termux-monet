@@ -35,7 +35,10 @@
   <img src="/art/screenshot_light.png#gh-light-mode-only" height=50%>
 </p>
 
-**We are looking for Termux Android application maintainers.**
+***
+
+## [Termux-Monet](https://github.com/HardcodedCat/termux-monet) is a unofficial, modified fork of [Termux](https://github.com/termux/termux-app), an Android terminal application and Linux environment, with Monet Theming Implementations and Community-made changes.
+This project is developed on my spare time, for me to learn more about Android development. Dont expect consistency, professionality or stability. 
 
 ***
 <a href="https://hosted.weblate.org/engage/termux-monet/">
@@ -50,8 +53,10 @@ Join us in https://hosted.weblate.org/engage/termux-monet/
 #### LOWER VERSIONS WILL DISPLAY A STATIC, BLACK AND WHITE MONET THEME
 ***
 
-[Termux-Monet](https://github.com/HardcodedCat/termux-monet) is a unofficial, modified fork of [Termux](https://github.com/termux/termux-app), an Android terminal application and Linux environment, with Monet Theming Implementations.
+# Termux-Monet can be updated by using [Obtainium](https://github.com/ImranR98/Obtainium)
+Here's a quick tutorial on how to add it to the app.
 
+![Uploadit](https://github.com/KitsunedFox/termux-monet/assets/103902727/bc2a236e-04ee-416c-a37c-d50c69e52b24)
 ***
 
 ## Contents
