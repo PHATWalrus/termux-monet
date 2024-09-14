@@ -130,6 +130,16 @@ public class TermuxUtils {
     }
 
     /**
+     * Get the {@link Context} for {@link TermuxConstants#TERMUX_GUI_PACKAGE_NAME} package.
+     *
+     * @param context The {@link Context} to use to get the {@link Context} of the package.
+     * @return Returns the {@link Context}. This will {@code null} if an exception is raised.
+     */
+    public static Context getTermuxGUIPackageContext(@NonNull Context context) {
+        return PackageUtils.getContextForPackage(context, TermuxConstants.TERMUX_GUI_PACKAGE_NAME);
+    }
+
+    /**
      * Get the {@link Context} for {@link TermuxConstants#TERMUX_WIDGET_PACKAGE_NAME} package.
      *
      * @param context The {@link Context} to use to get the {@link Context} of the package.
@@ -489,6 +499,7 @@ public class TermuxUtils {
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_STYLING_APP_NAME, TermuxConstants.TERMUX_STYLING_GITHUB_ISSUES_REPO_URL)).append("  ");
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_TASKER_APP_NAME, TermuxConstants.TERMUX_TASKER_GITHUB_ISSUES_REPO_URL)).append("  ");
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_WIDGET_APP_NAME, TermuxConstants.TERMUX_WIDGET_GITHUB_ISSUES_REPO_URL)).append("  ");
+        markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_GUI_APP_NAME, TermuxConstants.TERMUX_GUI_GITHUB_ISSUES_REPO_URL)).append("  ");
         markdownString.append("\n\n### GitHub Issues for Termux packages\n");
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_PACKAGES_GITHUB_REPO_NAME, TermuxConstants.TERMUX_PACKAGES_GITHUB_ISSUES_REPO_URL)).append("  ");
         markdownString.append("\n##\n");
@@ -505,7 +516,10 @@ public class TermuxUtils {
         if (context == null)
             return "null";
         StringBuilder markdownString = new StringBuilder();
-        markdownString.append("## Important Links");
+        markdownString.append("## Termux:Monet");
+        markdownString.append("\n\n").append(MarkdownUtils.getLinkMarkdownString("Termux-Monet", "https://github.com/KitsunedFox/termux-monet")).append(" - by KitsunedFox  ");
+        markdownString.append("\n\n").append(context.getString(R.string.msg_about_termux_monet));
+        markdownString.append("\n\n## Important Links");
         markdownString.append("\n\n### GitHub\n");
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_APP_NAME, TermuxConstants.TERMUX_GITHUB_REPO_URL)).append("  ");
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_API_APP_NAME, TermuxConstants.TERMUX_API_GITHUB_REPO_URL)).append("  ");
@@ -514,6 +528,7 @@ public class TermuxUtils {
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_STYLING_APP_NAME, TermuxConstants.TERMUX_STYLING_GITHUB_REPO_URL)).append("  ");
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_TASKER_APP_NAME, TermuxConstants.TERMUX_TASKER_GITHUB_REPO_URL)).append("  ");
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_WIDGET_APP_NAME, TermuxConstants.TERMUX_WIDGET_GITHUB_REPO_URL)).append("  ");
+        markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_GUI_APP_NAME, TermuxConstants.TERMUX_GUI_GITHUB_REPO_URL)).append("  ");
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_PACKAGES_GITHUB_REPO_NAME, TermuxConstants.TERMUX_PACKAGES_GITHUB_REPO_URL)).append("  ");
         markdownString.append("\n\n### Email\n");
         markdownString.append("\n").append(MarkdownUtils.getLinkMarkdownString(TermuxConstants.TERMUX_SUPPORT_EMAIL_URL, TermuxConstants.TERMUX_SUPPORT_EMAIL_MAILTO_URL)).append("  ");

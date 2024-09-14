@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE resources [
 <!ENTITY TERMUX_PACKAGE_NAME "com.termux">
-<!ENTITY TERMUX_APP_NAME "Termux">
+<!ENTITY TERMUX_APP_NAME "Termux:Monet">
 <!ENTITY TERMUX_API_APP_NAME "Termux:API">
 <!ENTITY TERMUX_BOOT_APP_NAME "Termux:Boot">
 <!ENTITY TERMUX_FLOAT_APP_NAME "Termux:Float">
@@ -177,7 +177,7 @@
     <string name="about_preference_title">Sobre</string>
     <!-- Donate Preference -->
     <string name="donate_preference_title">Doar</string>
-    <string name="title_restore_background_image">Um plano de fundo foi encontrado. Gostaria de restaurá-lo\?</string>
-    <string name="error_background_image_loading_from_gallery_failed">Não foi possível carregar esta imagem. Tente novamente.</string>
-    <string name="error_background_image_loading_failed">Não foi possível carregar o plano de fundo. Utilizando cor sólida.</string>
+    <string name="title_restore_background_image">Plano de fundo encontrado. você gostaria de restaurá-lo\?</string>
+    <string name="error_background_image_loading_failed">Não foi possível carregar o plano de fundo. Utilizando plano de fundo de cor sólida.</string>
+    <string name="error_background_image_loading_from_gallery_failed">Não foi possível carregar esta imagem. Tente utilizar outra imagem.</string>
 </resources>

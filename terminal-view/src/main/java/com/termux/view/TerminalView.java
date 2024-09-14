@@ -9,6 +9,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Typeface;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -27,11 +28,15 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewTreeObserver;
 import android.view.accessibility.AccessibilityManager;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.autofill.AutofillManager;
 import android.view.autofill.AutofillValue;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.widget.Scroller;
+import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import com.termux.terminal.KeyHandler;
@@ -104,11 +109,35 @@ public final class TerminalView extends View {
      * What was left in from scrolling movement.
      */
     float mScrollRemainder;
+    float mScrollXRemainder;
 
     /**
      * If non-zero, this is the last unicode code point received if that was a combining character.
      */
     int mCombiningAccent;
+
+    /**
+     * The current AutoFill type returned for {@link View#getAutofillType()} by {@link #getAutofillType()}.
+     *
+     * The default is {@link #AUTOFILL_TYPE_NONE} so that AutoFill UI, like toolbar above keyboard
+     * is not shown automatically, like on Activity starts/View create. This value should be updated
+     * to required value, like {@link #AUTOFILL_TYPE_TEXT} before calling
+     * {@link AutofillManager#requestAutofill(View)} so that AutoFill UI shows. The updated value
+     * set will automatically be restored to {@link #AUTOFILL_TYPE_NONE} in
+     * {@link #autofill(AutofillValue)} so that AutoFill UI isn't shown anymore by calling
+     * {@link #resetAutoFill()}.
+     */
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private int mAutoFillType = AUTOFILL_TYPE_NONE;
+
+    /**
+     * The current AutoFill hints returned for {@link View#getAutofillHints()} ()} by {@link #getAutofillHints()} ()}.
+     *
+     * The default is an empty `string[]`. This value should be updated to required value. The
+     * updated value set will automatically be restored an empty `string[]` in
+     * {@link #autofill(AutofillValue)} by calling {@link #resetAutoFill()}.
+     */
+    private String[] mAutoFillHints = new String[0];
 
     private final boolean mAccessibilityEnabled;
 
@@ -135,6 +164,7 @@ public final class TerminalView extends View {
             @Override
             public boolean onUp(MotionEvent event) {
                 mScrollRemainder = 0.0f;
+                mScrollXRemainder = 0.0f;
                 if (mEmulator != null && mEmulator.isMouseTrackingActive() && !event.isFromSource(InputDevice.SOURCE_MOUSE) && !isSelectingText() && !scrolledWithFinger) {
                     // Quick event processing when mouse tracking is active - do not wait for check of double tapping
                     // for zooming.
@@ -175,6 +205,12 @@ public final class TerminalView extends View {
                     int deltaRows = (int) (distanceY / mRenderer.mFontLineSpacing);
                     mScrollRemainder = distanceY - deltaRows * mRenderer.mFontLineSpacing;
                     doScroll(e, deltaRows);
+                    
+                    distanceX += mScrollXRemainder;
+                    int deltaCols = (int) (distanceX / mRenderer.mFontWidth);
+                    mScrollXRemainder = distanceX - deltaCols * mRenderer.mFontWidth;
+//mClient.logError("scrolll", distanceY, distanceX);
+                    doScrollX(e, deltaCols);
                 }
                 return true;
             }
@@ -200,6 +236,7 @@ public final class TerminalView extends View {
                 if (mouseTrackingAtStartOfFling) {
                     mScroller.fling(0, 0, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.mRows / 2, mEmulator.mRows / 2);
                 } else {
+                	//this doesn't fling in less
                     mScroller.fling(0, mTopRow, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.getScreen().getActiveTranscriptRows(), 0);
                 }
                 post(new Runnable() {
@@ -258,6 +295,10 @@ public final class TerminalView extends View {
         mScroller = new Scroller(context);
         AccessibilityManager am = (AccessibilityManager) context.getSystemService(Context.ACCESSIBILITY_SERVICE);
         mAccessibilityEnabled = am.isEnabled();
+
+        // A view is important for accessibility if it fires accessibility events
+        // and if it is reported to accessibility services that query the screen.
+        setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
     }
 
     /**
@@ -474,12 +515,161 @@ public final class TerminalView extends View {
         }
         mEmulator.clearScrollCounter();
         invalidate();
-        if (mAccessibilityEnabled)
-            setContentDescription(getText());
+        if (mAccessibilityEnabled) {
+            // fire off events that the content of this control changed,
+            // so that the accessibility service gets the updated text
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED);
+        }
     }
 
-    /**
-     * This must be called by the hosting activity in {@link Activity#onContextMenuClosed(Menu)}
+    // ultimately called as a result of the code in updateScreen
+    @Override
+    public void onPopulateAccessibilityEvent(AccessibilityEvent event) {
+        super.onPopulateAccessibilityEvent(event);
+
+        // add our (most up to date) text
+        final CharSequence text = getText();
+        if (!TextUtils.isEmpty(text)) {
+            event.getText().add(text);
+        }
+    }
+
+    // called by accessibility service exploring what's available
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo node) {
+        super.onInitializeAccessibilityNodeInfo(node);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            node.setImportantForAccessibility(true);
+        }
+
+        final CharSequence text = getText();
+        node.setText(text);
+
+        // why only if text is non-empty? cargo cult, core TextView does this check,
+        // and the accessibility guide example also does this check, who am I to argue
+        if (!TextUtils.isEmpty(text)) {
+            // all granularities are valid, don't let the accessibility system guess;
+            // this allows a TalkBack user to navigate by char/word/paragraph within
+            // the TerminalView text only without accidently breaking out; other navigation
+            // modes such as default/controls allow you to move to other controls
+            node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_NEXT_AT_MOVEMENT_GRANULARITY);
+            node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY);
+            node.setMovementGranularities(AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER
+                | AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD
+                | AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE
+                | AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PARAGRAPH
+                | AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PAGE);
+
+            // add more selection actions
+            node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_SELECTION);
+            node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLEAR_SELECTION);
+        }
+
+        // behave more like a multiline text view
+        node.setEditable(true);
+        node.setMultiLine(true);
+        node.setScrollable(true);
+        node.setCanOpenPopup(true);
+
+        // add actions that you can do on this thing
+        node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
+        node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_LONG_CLICK);
+        node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_FOCUS);
+        node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_COPY);
+        node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PASTE);
+        node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD);
+        node.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD);
+
+        // Add accessibility actions
+
+        node.addAction(new AccessibilityNodeInfo.AccessibilityAction(
+            R.id.a11y_speak_cursor_position,
+            getResources().getString(R.string.a11y_speak_cursor_position_text)));
+        node.addAction(new AccessibilityNodeInfo.AccessibilityAction(
+            R.id.a11y_speak_cursor_line,
+            getResources().getString(R.string.a11y_speak_cursor_line_text)));
+        // Using a different to the Copy action in the popup, which you can technically
+        // get to if someone tells you it's there. You can't have the same button label
+        // do different things in different contexts; hence, different label
+        node.addAction(new AccessibilityNodeInfo.AccessibilityAction(
+            R.id.a11y_copy_id,
+            getResources().getString(R.string.a11y_copy_screen_text)));
+        node.addAction(new AccessibilityNodeInfo.AccessibilityAction(
+            R.id.a11y_paste_id,
+            getResources().getString(R.string.paste_text)));
+        node.addAction(new AccessibilityNodeInfo.AccessibilityAction(
+            R.id.a11y_show_termux_menu_id,
+            getResources().getString(R.string.a11y_termux_menu_text)));
+    }
+
+    @Override
+    public boolean performAccessibilityAction(int action, Bundle args) {
+        // only handle custom actions here, the defaults implemented by super are good enough
+        if (action == R.id.a11y_show_termux_menu_id) {
+            showContextMenu();
+            return true;
+        } else if (action == R.id.a11y_paste_id) {
+            doPaste();
+            return true;
+        } else if (action == R.id.a11y_copy_id) {
+            // I can't quite figure out how to make TextSelectionHandleView and/or
+            // TextSelectionCursor accessible; and I can't figure out how to hook up
+            // with the Accessibility Selection (2 finger 2x tap & hold) either;
+            // so at least give people the option to copy the screen; the whole
+            // transcript might be too much, plus there's a share transcript option
+            // in the More... menu;
+            // 3 finger double tap works as copy, but editable fields elsewhere tend
+            // to offer a Copy accessibility option
+            ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipData clip = ClipData.newPlainText("screen text", getText());
+            clipboard.setPrimaryClip(clip);
+            Toast toast = Toast.makeText(
+                getContext(),
+                getResources().getText(R.string.copied_to_clipboard_text),
+                Toast.LENGTH_SHORT);
+            toast.show();
+
+            return true;
+        } else if (action == R.id.a11y_speak_cursor_position && mEmulator != null) {
+            // because TalkBack might omit speaking out whitespace or punctuation,
+            // get the character under cursor to get a better idea what "column 24" means...
+            // in conjunction with "speak line", it should give you a good idea where you are
+            Character charAtCursor = mEmulator.getChar(mEmulator.getCursorCol(), mTopRow + mEmulator.getCursorRow());
+            // get the unicode name of the character; The screen reader may be configured to not
+            // speak out punctuation, and it will probably not say " "
+            String namedCharAtCursor = charAtCursor != null
+                ? Character.getName(charAtCursor)
+                : "";
+            // Character.getName() is allowed to return null...
+            // ...and it's easy to "accidently" your terminal with an unfortunate cat
+            if (namedCharAtCursor == null)
+                namedCharAtCursor = "unknown";
+            // "line Y / nScreenLines column X / nScreenColumns. unicode_name_of_character"
+            final String text = getResources().getString(R.string.a11y_line_text) +
+                " " +
+                (mEmulator.getCursorRow() + 1) +
+                " / " +
+                mEmulator.mRows +
+                " " +
+                getResources().getString(R.string.a11y_column_text) +
+                " " +
+                (mEmulator.getCursorCol() + 1) +
+                " / " +
+                mEmulator.mColumns +
+                ". " +
+                namedCharAtCursor;
+            announceForAccessibility(text);
+            return true;
+        } else if (action == R.id.a11y_speak_cursor_line && mEmulator != null) {
+            CharSequence lineText = mEmulator.getScreen().getSelectedText(0, mTopRow + mEmulator.getCursorRow(), mEmulator.mColumns, mTopRow + mEmulator.getCursorRow());
+            announceForAccessibility(lineText);
+            return true;
+        }
+
+        return super.performAccessibilityAction(action, args);
+    }
+
+    /** This must be called by the hosting activity in {@link Activity#onContextMenuClosed(Menu)}
      * when context menu for the {@link TerminalView} is started by
      * {@link TextSelectionCursorController#ACTION_MORE} is closed.
      */
@@ -541,7 +731,7 @@ public final class TerminalView extends View {
         int[] columnAndRow = getColumnAndRow(e, false);
         int x = columnAndRow[0] + 1;
         int y = columnAndRow[1] + 1;
-        if (pressed && (button == TerminalEmulator.MOUSE_WHEELDOWN_BUTTON || button == TerminalEmulator.MOUSE_WHEELUP_BUTTON)) {
+        if (pressed && (button >= TerminalEmulator.MOUSE_WHEELDOWN_BUTTON && button <= TerminalEmulator.MOUSE_WHEEL_RIGHT)) {
             if (mMouseStartDownTime == e.getDownTime()) {
                 x = mMouseScrollStartX;
                 y = mMouseScrollStartY;
@@ -571,6 +761,26 @@ public final class TerminalView extends View {
                 mTopRow = Math.min(0, Math.max(-(mEmulator.getScreen().getActiveTranscriptRows()), mTopRow + (up ? -1 : 1)));
                 if (!awakenScrollBars())
                     invalidate();
+            }
+        }
+    }
+    
+    void doScrollX(MotionEvent event, int cols) {
+        boolean left = cols < 0;
+        int amount = Math.abs(cols);
+        for (int i = 0; i < amount; i++) {
+            if (mEmulator.isMouseTrackingActive()) {
+                sendMouseEventCode(event, left ? TerminalEmulator.MOUSE_WHEEL_LEFT : TerminalEmulator.MOUSE_WHEEL_RIGHT, true);
+            } else if (mEmulator.isAlternateBufferActive()) {
+            	/* less is broken let me know if it works elsewhere @john-peterson
+                handleKeyCode(left ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT, 0);
+                */
+            } else {
+            	/*
+                mTopRow = Math.min(0, Math.max(-(mEmulator.getScreen().getActiveTranscriptRows()), mTopRow + (up ? -1 : 1)));
+                if (!awakenScrollBars())
+                    invalidate();
+                    */
             }
         }
     }
@@ -606,19 +816,9 @@ public final class TerminalView extends View {
                     showContextMenu();
                 return true;
             } else if (event.isButtonPressed(MotionEvent.BUTTON_TERTIARY)) {
-                ClipboardManager clipboardManager = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-                ClipData clipData = clipboardManager.getPrimaryClip();
-                if (clipData != null) {
-                    ClipData.Item clipItem = clipData.getItemAt(0);
-                    if (clipItem != null) {
-                        CharSequence text = clipItem.coerceToText(getContext());
-                        if (!TextUtils.isEmpty(text))
-                            mEmulator.paste(text.toString());
-                    }
-                }
-            } else if (mEmulator.isMouseTrackingActive()) {
-                // BUTTON_PRIMARY.
-                switch(event.getAction()) {
+                doPaste();
+            } else if (mEmulator.isMouseTrackingActive()) { // BUTTON_PRIMARY.
+                switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
                     case MotionEvent.ACTION_UP:
                         sendMouseEventCode(event, TerminalEmulator.MOUSE_LEFT_BUTTON, event.getAction() == MotionEvent.ACTION_DOWN);
@@ -633,11 +833,24 @@ public final class TerminalView extends View {
         return true;
     }
 
+    private void doPaste() {
+        ClipboardManager clipboardManager = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clipData = clipboardManager.getPrimaryClip();
+        if (clipData != null) {
+            ClipData.Item clipItem = clipData.getItemAt(0);
+            if (clipItem != null) {
+                CharSequence text = clipItem.coerceToText(getContext());
+                if (!TextUtils.isEmpty(text)) mEmulator.paste(text.toString());
+            }
+        }
+    }
+
     @Override
     public boolean onKeyPreIme(int keyCode, KeyEvent event) {
         if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
             mClient.logInfo(LOG_TAG, "onKeyPreIme(keyCode=" + keyCode + ", event=" + event + ")");
         if (keyCode == KeyEvent.KEYCODE_BACK) {
+            cancelRequestAutoFill();
             if (isSelectingText()) {
                 stopTextSelectionMode();
                 return true;
@@ -926,7 +1139,7 @@ public final class TerminalView extends View {
                 if (shiftDown) {
                     long time = SystemClock.uptimeMillis();
                     MotionEvent motionEvent = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, 0, 0, 0);
-                    doScroll(motionEvent, keyCode == KeyEvent.KEYCODE_PAGE_UP ? -1 : 1);
+                    doScroll(motionEvent, keyCode == KeyEvent.KEYCODE_PAGE_UP ? -mEmulator.mRows : mEmulator.mRows);
                     motionEvent.recycle();
                     return true;
                 }
@@ -1013,6 +1226,7 @@ public final class TerminalView extends View {
     }
 
     private CharSequence getText() {
+        if (mEmulator == null) return "";
         return mEmulator.getScreen().getSelectedText(0, mTopRow, mEmulator.mColumns, mTopRow + mEmulator.mRows);
     }
 
@@ -1052,12 +1266,20 @@ public final class TerminalView extends View {
         if (value.isText()) {
             mTermSession.write(value.getTextValue().toString());
         }
+
+        resetAutoFill();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int getAutofillType() {
-        return AUTOFILL_TYPE_TEXT;
+        return mAutoFillType;
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    @Override
+    public String[] getAutofillHints() {
+        return mAutoFillHints;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -1065,6 +1287,93 @@ public final class TerminalView extends View {
     public AutofillValue getAutofillValue() {
         return AutofillValue.forText("");
     }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    @Override
+    public int getImportantForAutofill() {
+        return IMPORTANT_FOR_AUTOFILL_NO;
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private synchronized void resetAutoFill() {
+        // Restore none type so that AutoFill UI isn't shown anymore.
+        mAutoFillType = AUTOFILL_TYPE_NONE;
+        mAutoFillHints = new String[0];
+    }
+
+    public AutofillManager getAutoFillManagerService() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null;
+
+        try {
+            Context context = getContext();
+            if (context == null) return null;
+            return context.getSystemService(AutofillManager.class);
+        } catch (Exception e) {
+            mClient.logStackTraceWithMessage(LOG_TAG, "Failed to get AutofillManager service", e);
+            return null;
+        }
+    }
+
+    public boolean isAutoFillEnabled() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false;
+
+        try {
+            AutofillManager autofillManager = getAutoFillManagerService();
+            return autofillManager != null && autofillManager.isEnabled();
+        } catch (Exception e) {
+            mClient.logStackTraceWithMessage(LOG_TAG, "Failed to check if Autofill is enabled", e);
+            return false;
+        }
+    }
+
+    public synchronized void requestAutoFillUsername() {
+        requestAutoFill(
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new String[]{View.AUTOFILL_HINT_USERNAME} :
+                null);
+    }
+
+    public synchronized void requestAutoFillPassword() {
+        requestAutoFill(
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new String[]{View.AUTOFILL_HINT_PASSWORD} :
+            null);
+    }
+
+    public synchronized void requestAutoFill(String[] autoFillHints) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        if (autoFillHints == null || autoFillHints.length < 1) return;
+
+        try {
+            AutofillManager autofillManager = getAutoFillManagerService();
+            if (autofillManager != null && autofillManager.isEnabled()) {
+                // Update type that will be returned by `getAutofillType()` so that AutoFill UI is shown.
+                mAutoFillType = AUTOFILL_TYPE_TEXT;
+                // Update hints that will be returned by `getAutofillHints()` for which to show AutoFill UI.
+                mAutoFillHints = autoFillHints;
+                autofillManager.requestAutofill(this);
+            }
+        } catch (Exception e) {
+            mClient.logStackTraceWithMessage(LOG_TAG, "Failed to request Autofill", e);
+        }
+    }
+
+    public synchronized void cancelRequestAutoFill() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        if (mAutoFillType == AUTOFILL_TYPE_NONE) return;
+
+        try {
+            AutofillManager autofillManager = getAutoFillManagerService();
+            if (autofillManager != null && autofillManager.isEnabled()) {
+                resetAutoFill();
+                autofillManager.cancel();
+            }
+        } catch (Exception e) {
+            mClient.logStackTraceWithMessage(LOG_TAG, "Failed to cancel Autofill request", e);
+        }
+    }
+
+
+
+
 
     /**
      * Set terminal cursor blinker rate. It must be between {@link #TERMINAL_CURSOR_BLINK_RATE_MIN}

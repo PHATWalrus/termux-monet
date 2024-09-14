@@ -202,6 +202,27 @@ public final class TermuxPreferenceConstants {
         public static final String KEY_BACKGROUND_IMAGE_ENABLED = "background_image_enabled";
 
         public static final boolean DEFAULT_VALUE_BACKGROUND_IMAGE_ENABLED = false;
+        
+        /**
+         * Defines the key for whether extrakeys blur is enabled or not.
+         */
+        public static final String KEY_EXTRAKEYS_BLUR_ENABLED = "extrakeys_blur_enabled";
+
+        public static final boolean DEFAULT_VALUE_EXTRAKEYS_BLUR_ENABLED = false;
+        
+        /**
+         * Defines the key for whether sessions blur is enabled or not.
+         */
+        public static final String KEY_SESSIONS_BLUR_ENABLED = "sessions_blur_enabled";
+
+        public static final boolean DEFAULT_VALUE_SESSIONS_BLUR_ENABLED = false;
+        
+        /**
+         * Defines the key for whether monet background is enabled or not.
+         */
+        public static final String KEY_MONET_BACKGROUND_ENABLED = "monet_background_enabled";
+
+        public static final boolean DEFAULT_VALUE_MONET_BACKGROUND_ENABLED = false;
     }
 
     /**
@@ -303,6 +324,17 @@ public final class TermuxPreferenceConstants {
         public static final String KEY_LAST_PENDING_INTENT_REQUEST_CODE = "last_pending_intent_request_code";
 
         public static final int DEFAULT_VALUE_KEY_LAST_PENDING_INTENT_REQUEST_CODE = 0;
+    }
+
+    /**
+     * Termux:GUI app constants.
+     */
+    public static final class TERMUX_GUI_APP {
+
+        /**
+         * Defines the key for current log level.
+         */
+        public static final String KEY_LOG_LEVEL = "log_level";
     }
 
     /**
